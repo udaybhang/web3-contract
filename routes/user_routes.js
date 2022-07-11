@@ -7,4 +7,5 @@ module.exports = function (app){
     app.post('/v1/createWallet',accountController.createWallet);
     app.post('/v1/compileGenerateAbiByteCode',accountController.generateAbiByteCode);
     app.post('/v1/deployContract',accountController.deployContract);
+    app.post('/v1/signTransaction',accountController.signTransaction);
  };
