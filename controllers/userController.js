@@ -6,6 +6,7 @@ const solc = require("solc");
 const path = require("path");
 const fs = require("fs");
 const Web3 = require("web3");
+const Contract = require('web3-eth-contract');
 exports.signup = async (req, res) => {
   const schema = joi.object().keys({
     username: joi
@@ -94,7 +95,7 @@ exports.login = async (req, res) => {
 
 exports.createAccount = async (req, res) => {
   try {
-    var accounts = new Accounts("ws://localhost:8546");
+    var accounts = new Accounts(C.WebSocketProvider);
     let accInfo = accounts.create();
     if (accInfo) {
       res.status(200).json({
@@ -111,10 +112,77 @@ exports.createAccount = async (req, res) => {
     });
   }
 };
+
+exports.connectContract = async(req, res) => {
+  try {
+    Contract.setProvider(C.WebSocketProvider);
+    let fileContent = fs
+      .readFileSync(path.join(__dirname, "../", "/contract/" + "demo" + ".sol"))
+      .toString();
+    console.log("File content: ", fileContent);
+    var input = {
+      language: "Solidity",
+      sources: {
+        "demo.sol": {
+          content: fileContent,
+        },
+      },
+
+      settings: {
+        outputSelection: {
+          "*": {
+            "*": ["*"],
+          },
+        },
+      },
+    };
+    console.log("input::", input);
+    var output = JSON.parse(solc.compile(JSON.stringify(input)));
+    console.log("Output: ", output);
+    let ABI = output.contracts["demo.sol"]["demo"].abi;
+    let contract = new Contract(ABI, '0xAee1E0b7dEcaf0E053c64361048b7236030db6d0');
+    let result = JSON.stringify(contract, getCircularReplacer());
+    let cnt = JSON.parse(result);
+    res.status(200).json({
+      message:'Contract Instance!',
+      data: cnt
+    })
+  } catch (err) {
+    res.status(403).json({
+      message: "Contract failed!",
+      error: err.message
+    });
+  }
+}
+exports.getTransaction = async(req, res) =>{
+  try {
+    let {txHash} = req.body;
+    if(!txHash) throw new Error('Please provide transaction hash!');
+    let web3 = new Web3(
+      new Web3.providers.HttpProvider(C.HttpProvider)
+    );
+    let transactionLog = await web3.eth.getTransaction(txHash);
+    res.status(200).json({
+      message:'Transaction verified!',
+      data: transactionLog
+    })
+  } catch (err) {
+    res.status(403).json({
+      message: "Transaction verification failed!",
+      error: err.message
+    });
+  }
+}
+
 exports.signTransaction = async (req, res) => {
   try {
+    let {from, to, value} = req.body;
+    if(!from) throw new Error('Please provide address from!');
+    else if(!to) throw new Error('Please provide address to!');
+    else {
+      value = value ? value : "2";
     let web3 = new Web3(
-      new Web3.providers.HttpProvider("http://127.0.0.1:7545")
+      new Web3.providers.HttpProvider(C.HttpProvider)
     );
     let createAccount = await web3.eth.accounts.create();
     //    Creates an account object from a private key.
@@ -122,26 +190,27 @@ exports.signTransaction = async (req, res) => {
       createAccount.privateKey
     );
     // tansfer value
-    let value = await web3.utils.toWei("10", "ether");
+    let ethValue = await web3.utils.toWei(value, "ether");
     // Signs an Ethereum transaction with a given private key.
     let createTransaction = await web3.eth.accounts.signTransaction(
       {
-        to: "0xB7e45d6Cbcd3985FbdFd616743bdC4e50d9b4c59",
-        value: value,
+        to,
+        value:ethValue,
         gas: 2000000,
       },
       accountData.privateKey
     );
     console.log(createTransaction);
     let createReceipt = await web3.eth.sendTransaction({
-      from: "0x30ea83705eDb5889b6f83626FFe633F1ad5e20C3",
-      to: "0xB7e45d6Cbcd3985FbdFd616743bdC4e50d9b4c59",
-      value: value,
+      from,
+      to,
+      value:ethValue
     });
     res.status(200).json({
       message: "Transaction Success!",
       data: createReceipt,
     });
+    }
   } catch (err) {
     console.log(err);
     res.status(403).json({
@@ -154,7 +223,7 @@ exports.deployContract = async (req, res) => {
   try {
     let defaultAccount;
     let web3 = new Web3(
-      new Web3.providers.HttpProvider("http://127.0.0.1:7545")
+      new Web3.providers.HttpProvider(C.HttpProvider)
     );
     let fileContent = fs
       .readFileSync(path.join(__dirname, "../", "/contract/" + "demo" + ".sol"))
@@ -207,7 +276,7 @@ exports.deployContract = async (req, res) => {
 };
 exports.generateAbiByteCode = async (req, res) => {
   try {
-    web3 = new Web3(new Web3.providers.HttpProvider("http://127.0.0.1:7545"));
+    web3 = new Web3(new Web3.providers.HttpProvider(C.HttpProvider));
     let fileContent = fs
       .readFileSync(path.join(__dirname, "../", "/contract/" + "demo" + ".sol"))
       .toString();
@@ -251,7 +320,7 @@ exports.generateAbiByteCode = async (req, res) => {
 
 exports.createWallet = async (req, res) => {
   try {
-    var accounts = new Accounts("ws://localhost:8546");
+    var accounts = new Accounts(C.WebSocketProvider);
     let walletInfo = accounts.wallet.create(2, "some random string");
     let result = JSON.stringify(walletInfo, getCircularReplacer());
     let walletCreated = JSON.parse(result);
